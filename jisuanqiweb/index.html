@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <title>基础计算器</title>
+  <style>
+    :root{
+      --bg:#0f172a;            /* 背景深蓝/灰 */
+      --panel:#111827;         /* 面板深灰 */
+      --display:#0b1220;
+      --text:#e5e7eb;          /* 文本浅灰 */
+      --muted:#94a3b8;         /* 次级文本 */
+      --digit:#1f2937;         /* 数字键底色 */
+      --digit-hover:#243042;
+      --op:#1d4ed8;            /* 运算符键 */
+      --op-hover:#2a5ef0;
+      --func:#dc2626;          /* 功能键 C */
+      --func-hover:#ef4444;
+      --ok:#16a34a;            /* = 绿色 */
+      --ok-hover:#22c55e;
+      --shadow: 0 10px 25px rgba(0,0,0,.3);
+      --radius:14px;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC", "Microsoft YaHei", Arial;
+      background: linear-gradient(135deg,#0f172a,#0b1220 60%,#0a0f1d);
+      color: var(--text);
+    }
+    .wrap {
+      min-height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+    .calc {
+      width: 100%;
+      max-width: 420px;
+      background: var(--panel);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .display {
+      background: var(--display);
+      padding: 18px 18px 8px 18px;
+    }
+    .expr {
+      min-height: 28px;
+      color: var(--muted);
+      font-size: 18px;
+      word-wrap: break-word;
+      word-break: break-all;
+    }
+    .result {
+      min-height: 44px;
+      font-size: 28px;
+      font-weight: 600;
+      margin-top: 6px;
+      word-wrap: break-word;
+      word-break: break-all;
+    }
+    .result.error {
+      color: #f87171; /* 错误红 */
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      padding: 14px;
+    }
+
+    button.btn {
+      appearance: none;
+      border: none;
+      border-radius: 12px;
+      padding: 18px 0;
+      font-size: 20px;
+      color: var(--text);
+      background: var(--digit);
+      cursor: pointer;
+      transition: transform .06s ease, background .15s ease, box-shadow .15s ease;
+      box-shadow: 0 6px 14px rgba(0,0,0,.2);
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button.btn:active {
+      transform: translateY(1px) scale(0.98);
+      box-shadow: 0 4px 10px rgba(0,0,0,.18);
+    }
+    .btn.digit { background: var(--digit); }
+    .btn.digit:hover { background: var(--digit-hover); }
+
+    .btn.op { background: var(--op); }
+    .btn.op:hover { background: var(--op-hover); }
+
+    .btn.func { background: var(--func); }
+    .btn.func:hover { background: var(--func-hover); }
+
+    .btn.equal { background: var(--ok); }
+    .btn.equal:hover { background: var(--ok-hover); }
+
+    /* 让等号键占两行 */
+    .equal.span2 {
+      grid-row: span 2;
+    }
+
+    /* 小屏手机适配：按钮更高，字体稍大 */
+    @media (max-width: 420px) {
+      .grid { gap: 8px; padding: 12px; }
+      button.btn { padding: 20px 0; font-size: 22px; border-radius: 14px; }
+      .result { font-size: 30px; }
+      .expr { font-size: 17px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="calc">
+      <div class="display">
+        <div id="expr" class="expr"></div>
+        <div id="result" class="result"></div>
+      </div>
+      <div class="grid">
+        <!-- 第一行 -->
+        <button class="btn func" data-key="C" title="清空">C</button>
+        <button class="btn op" data-key="DEL" title="删除">←</button>
+        <button class="btn op" data-key="÷">÷</button>
+        <button class="btn op" data-key="×">×</button>
+        <!-- 第二行 -->
+        <button class="btn digit" data-key="7">7</button>
+        <button class="btn digit" data-key="8">8</button>
+        <button class="btn digit" data-key="9">9</button>
+        <button class="btn op" data-key="-">-</button>
+        <!-- 第三行 -->
+        <button class="btn digit" data-key="4">4</button>
+        <button class="btn digit" data-key="5">5</button>
+        <button class="btn digit" data-key="6">6</button>
+        <button class="btn op" data-key="+">+</button>
+        <!-- 第四行 -->
+        <button class="btn digit" data-key="1">1</button>
+        <button class="btn digit" data-key="2">2</button>
+        <button class="btn digit" data-key="3">3</button>
+        <button class="btn equal span2" data-key="=">=</button>
+        <!-- 第五行 -->
+        <button class="btn digit" data-key="0" style="grid-column: span 2;">0</button>
+        <button class="btn digit" data-key=".">.</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 简单状态
+    let expression = ""; // 当前输入的表达式字符串
+    const exprEl = document.getElementById("expr");
+    const resultEl = document.getElementById("result");
+
+    // 工具函数
+    const isOperator = (c) => ['+','-','×','÷','*','/'].includes(c);
+
+    function getCurrentSegment(exp) {
+      // 返回从最后一个二元运算符(+ - × ÷ * /)之后到结尾的片段
+      // 用于判断小数点、多运算符等
+      let idx = -1;
+      for (let i = exp.length - 1; i >= 0; i--) {
+        if (isOperator(exp[i])) { idx = i; break; }
+      }
+      return exp.slice(idx + 1);
+    }
+
+    function setError(msg) {
+      resultEl.classList.add("error");
+      resultEl.textContent = msg;
+    }
+
+    function clearError() {
+      resultEl.classList.remove("error");
+      // 不清空上次结果，让用户直观看到上次结果；在输入新内容时会清理
+    }
+
+    function updateDisplay() {
+      exprEl.textContent = expression || "0";
+    }
+
+    function appendValue(val) {
+      // 在追加字符前的输入校验
+      const last = expression.slice(-1);
+
+      if (val === '.') {
+        const seg = getCurrentSegment(expression);
+        // 如果段中已有小数点，禁止
+        if (seg.includes('.')) {
+          setError("同一数字不能包含多个小数点");
+          return;
+        }
+        // 如果是开头或刚接在运算符或单独负号后，补 0.
+        if (expression === "" || (isOperator(last) && last !== '.') || seg === "" || seg === "-") {
+          expression += (seg === "-" ? "0." : "0.");
+        } else {
+          expression += '.';
+        }
+        resultEl.textContent = ""; // 新输入时清除上次结果文字
+        return;
+      }
+
+      if (isOperator(val)) {
+        if (expression === "") {
+          // 开头仅允许负号
+          if (val === '-') {
+            expression = "-";
+            resultEl.textContent = "";
+            clearError();
+            updateDisplay();
+            return;
+          } else {
+            setError("表达式不能以该运算符开头");
+            return;
+          }
+        }
+        if (isOperator(last)) {
+          // 连续运算符：仅允许将第二个作为“负号”用于构造负数
+          if (val === '-' && last !== '-') {
+            expression += '-'; // 允许形如 5*-3
+          } else {
+            setError("不能连续输入运算符");
+            return;
+          }
+        } else {
+          expression += val;
+        }
+        resultEl.textContent = "";
+        clearError();
+        updateDisplay();
+        return;
+      }
+
+      // 数字
+      expression += val;
+      resultEl.textContent = "";
+      clearError();
+      updateDisplay();
+    }
+
+    function handleKey(key) {
+      if (key === 'C') {
+        expression = "";
+        resultEl.textContent = "";
+        clearError();
+        updateDisplay();
+        return;
+      }
+      if (key === 'DEL') {
+        if (expression.length > 0) {
+          expression = expression.slice(0, -1);
+          clearError();
+          updateDisplay();
+        }
+        return;
+      }
+      if (key === '=') {
+        if (!expression || expression.trim() === "" || isOperator(expression.slice(-1))) {
+          setError("请输入完整的表达式");
+          return;
+        }
+        calculate(expression);
+        return;
+      }
+      appendValue(key);
+    }
+
+    // 绑定按钮点击
+    document.querySelectorAll("button[data-key]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const key = btn.getAttribute("data-key");
+        handleKey(key);
+      });
+    });
+
+    // 可选：简单键盘支持
+    window.addEventListener("keydown", (e) => {
+      const k = e.key;
+      if (/\d/.test(k)) return handleKey(k);
+      if (k === '.') return handleKey('.');
+      if (k === '+') return handleKey('+');
+      if (k === '-') return handleKey('-');
+      if (k === '*') return handleKey('×'); // 用 × 显示，后端会转换
+      if (k === '/') return handleKey('÷');
+      if (k === 'Enter' || k === '=') return handleKey('=');
+      if (k === 'Backspace') return handleKey('DEL');
+      if (k.toLowerCase() === 'c' && (e.ctrlKey || e.metaKey)) { // Ctrl/Cmd + C 不拦截
+        return;
+      }
+      if (k.toLowerCase() === 'c') return handleKey('C');
+    });
+
+    async function calculate(expr) {
+      try {
+        // 请求后端计算
+        const res = await fetch("/api/calculate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expression: expr }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          setError(data.error);
+        } else {
+          resultEl.classList.remove("error");
+          resultEl.textContent = String(data.result);
+        }
+      } catch (err) {
+        setError("网络异常，请稍后重试");
+      }
+    }
+
+    // 初始渲染
+    updateDisplay();
+  </script>
+</body>
+</html>
